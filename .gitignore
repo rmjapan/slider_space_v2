@@ -6,3 +6,6 @@ gifs
 __pycache__
 .ipynb_checkpoints
 utils/api_key.py
+.env
+utils/.env
+utils/.env
