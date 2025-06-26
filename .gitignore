@@ -9,3 +9,4 @@ utils/api_key.py
 .env
 utils/.env
 utils/.env
+dataset/ip-adapter-faceid-plusv2_sd15.bin
