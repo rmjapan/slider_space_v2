@@ -10,3 +10,5 @@ utils/api_key.py
 utils/.env
 utils/.env
 dataset/ip-adapter-faceid-plusv2_sd15.bin
+dataset/result_dreambooth
+sd-scripts
