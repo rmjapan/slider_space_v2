@@ -12,7 +12,7 @@
 7. 高解像度出力
 8. 寄与率分析表示
 
-UI版と直接版の良いところを組み合わせたハイブリッドシステム + 主成分選択機能
+UI版と直接版の良いところを組合わせたハイブリッドシステム + 主成分選択機能
 """
 
 import streamlit as st
@@ -99,32 +99,74 @@ def load_encoder(encoder_type: str, device: str = 'cuda'):
     """
     エンコーダーを読み込む（リソースキャッシュ対応）
     """
+    # セッション状態からチェックポイントパスを取得
+    checkpoint_path = getattr(st.session_state, f'{encoder_type}_checkpoint', None)
+    if not checkpoint_path:
+        default_paths = get_default_checkpoint_paths()
+        checkpoint_path = default_paths.get(encoder_type, "")
+    
     if encoder_type == 'clip':
-        model = CLIPModel.from_pretrained(
-            "openai/clip-vit-large-patch14",
-            torch_dtype=torch.float16
-        )
-        processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        try:
+            model = CLIPModel.from_pretrained(
+                checkpoint_path,
+                torch_dtype=torch.float16
+            )
+            processor = CLIPProcessor.from_pretrained(checkpoint_path)
+            st.info(f"✅ CLIP モデル読み込み完了: {checkpoint_path}")
+        except Exception as e:
+            st.error(f"❌ CLIP モデル読み込み失敗: {str(e)}")
+            raise
         
     elif encoder_type == 'emotion_clip':
         if not EMOTION_CLIP_AVAILABLE:
             raise ImportError("EmotionCLIPのインポートに失敗しました")
-            
-        checkpoint_path = '/home/ryuichi/animins/slider_space_v2/EmotionCLIP/emotionclip_latest.pt'
-        if not os.path.exists(checkpoint_path):
-            raise FileNotFoundError(f"EmotionCLIPのチェックポイントが見つかりません")
         
-        checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
-        model = EmotionCLIP(video_len=8, backbone_checkpoint=None)
-        model.load_state_dict(checkpoint['model'], strict=True)
-        processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        if not os.path.exists(checkpoint_path):
+            candidates = find_checkpoint_candidates('emotion_clip')
+            error_msg = f"EmotionCLIPのチェックポイントが見つかりません: {checkpoint_path}"
+            if candidates:
+                error_msg += f"\n\n利用可能なファイル:\n" + "\n".join(f"  • {p}" for p in candidates[:5])
+                if len(candidates) > 5:
+                    error_msg += f"\n  ... 他 {len(candidates) - 5} 個"
+            raise FileNotFoundError(error_msg)
+        
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+            model = EmotionCLIP(video_len=8, backbone_checkpoint=None)
+            model.load_state_dict(checkpoint['model'], strict=True)
+            processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+            st.info(f"✅ EmotionCLIP チェックポイント読み込み完了: {Path(checkpoint_path).name}")
+        except Exception as e:
+            raise RuntimeError(f"EmotionCLIPチェックポイントの読み込みに失敗: {str(e)}")
         
     elif encoder_type == 'dinov2-small':
-        model = AutoModel.from_pretrained(
-            'facebook/dinov2-small',
-            torch_dtype=torch.float16
-        )
-        processor = None
+        try:
+            model = AutoModel.from_pretrained(
+                checkpoint_path,
+                torch_dtype=torch.float16
+            )
+            processor = None
+            st.info(f"✅ DINOv2 モデル読み込み完了: {checkpoint_path}")
+        except Exception as e:
+            st.error(f"❌ DINOv2 モデル読み込み失敗: {str(e)}")
+            raise
+        
+    elif encoder_type == 'openvision':
+        if not OPENVISION_AVAILABLE:
+            raise ImportError("OpenVisionのインポートに失敗しました")
+        
+        try:
+            if os.path.exists(checkpoint_path):
+                # ローカルファイルから読み込み
+                model = load_openvision_model(checkpoint_path)
+                st.info(f"✅ OpenVision チェックポイント読み込み完了: {Path(checkpoint_path).name}")
+            else:
+                # Hugging Face IDまたはデフォルトパスで読み込み
+                model = load_openvision_model(checkpoint_path)
+                st.info(f"✅ OpenVision モデル読み込み完了: {checkpoint_path}")
+            processor = None
+        except Exception as e:
+            raise RuntimeError(f"OpenVisionモデルの読み込みに失敗: {str(e)}")
         
     else:
         raise ValueError(f"サポートされていないエンコーダータイプ: {encoder_type}")
@@ -494,34 +536,234 @@ def create_multi_dimension_comparison(features_pca: np.ndarray, pca: PCA,
     
     return fig
 
+def get_default_checkpoint_paths():
+    """
+    各エンコーダーのデフォルトチェックポイントパスを取得
+    """
+    return {
+        'clip': "openai/clip-vit-large-patch14",  # Hugging Face ID
+        'emotion_clip': "/home/ryuichi/animins/slider_space_v2/EmotionCLIP/emotionclip_latest.pt",
+        'dinov2-small': "facebook/dinov2-small",  # Hugging Face ID
+        'openvision': "/home/ryuichi/animins/slider_space_v2/models/openvision_checkpoint.pt"
+    }
+
+def find_checkpoint_candidates(encoder_type: str):
+    """
+    指定されたエンコーダーの候補チェックポイントを検索
+    """
+    candidates = []
+    
+    if encoder_type == 'emotion_clip':
+        search_dirs = [
+            "/home/ryuichi/animins/slider_space_v2/EmotionCLIP/",
+            "/home/ryuichi/animins/EmotionCLIP/",
+            "/home/ryuichi/EmotionCLIP/",
+            str(Path.home() / "EmotionCLIP"),
+            "./EmotionCLIP/",
+            "../EmotionCLIP/"
+        ]
+        file_patterns = ["*.pt", "*.pth", "*.ckpt"]
+        
+    elif encoder_type == 'openvision':
+        search_dirs = [
+            "/home/ryuichi/animins/slider_space_v2/models/",
+            "/home/ryuichi/animins/models/",
+            str(Path.home() / "models"),
+            "./models/",
+            "../models/"
+        ]
+        file_patterns = ["*.pt", "*.pth", "*.ckpt"]
+        
+    elif encoder_type in ['clip', 'dinov2-small']:
+        # Hugging Faceモデルの場合はローカルキャッシュも検索
+        cache_dirs = [
+            str(Path.home() / ".cache/huggingface/transformers/"),
+            str(Path.home() / ".cache/huggingface/hub/"),
+            "/tmp/huggingface_cache/"
+        ]
+        search_dirs = cache_dirs
+        file_patterns = ["*.bin", "*.safetensors", "*.pt"]
+        
+    else:
+        return []
+    
+    # ファイル検索
+    for search_dir in search_dirs:
+        if os.path.exists(search_dir):
+            for pattern in file_patterns:
+                for file_path in Path(search_dir).glob(pattern):
+                    if file_path.is_file():
+                        candidates.append(str(file_path))
+    
+    # 重複除去とソート
+    return sorted(list(set(candidates)))
+
+def create_checkpoint_selector(encoder_type: str, key_prefix: str = ""):
+    """
+    チェックポイント選択UIを作成
+    """
+    default_paths = get_default_checkpoint_paths()
+    default_path = default_paths.get(encoder_type, "")
+    
+    st.sidebar.subheader(f"📁 {encoder_type.upper()} チェックポイント設定")
+    
+    # 選択方法
+    selection_methods = ["デフォルト使用", "カスタムパス指定", "ファイルブラウザー"]
+    
+    # Hugging Faceモデルの場合は説明を追加
+    if encoder_type in ['clip', 'dinov2-small']:
+        selection_methods[0] = "デフォルト使用 (Hugging Face)"
+    
+    checkpoint_method = st.sidebar.radio(
+        f"{encoder_type.upper()} 選択方法",
+        selection_methods,
+        index=0,
+        key=f"{key_prefix}checkpoint_method_{encoder_type}"
+    )
+    
+    if checkpoint_method.startswith("デフォルト使用"):
+        checkpoint_path = default_path
+        if encoder_type in ['clip', 'dinov2-small']:
+            st.sidebar.info(f"🤗 Hugging Face ID: `{checkpoint_path}`")
+        else:
+            st.sidebar.info(f"📁 使用パス: `{checkpoint_path}`")
+            
+    elif checkpoint_method == "カスタムパス指定":
+        help_text = "チェックポイントファイルのフルパスまたはHugging Face IDを入力"
+        if encoder_type in ['clip', 'dinov2-small']:
+            help_text += "\n例: openai/clip-vit-base-patch32 または /path/to/model"
+        
+        checkpoint_path = st.sidebar.text_input(
+            f"{encoder_type.upper()} チェックポイントパス",
+            value=default_path,
+            help=help_text,
+            key=f"{key_prefix}custom_path_{encoder_type}"
+        )
+        
+    else:  # ファイルブラウザー
+        candidates = find_checkpoint_candidates(encoder_type)
+        
+        if candidates:
+            # 候補リストを作成（デフォルトとカスタムも含む）
+            all_options = [
+                f"デフォルト: {default_path}",
+                "カスタムパス指定..."
+            ] + [f"ローカル: {Path(p).name} ({p})" for p in candidates[:10]]  # 最大10個まで表示
+            
+            if len(candidates) > 10:
+                all_options.append(f"... 他 {len(candidates) - 10} 個のファイル")
+            
+            selected_option = st.sidebar.selectbox(
+                f"{encoder_type.upper()} ファイル選択",
+                all_options,
+                index=0,
+                help="利用可能なチェックポイントファイルから選択",
+                key=f"{key_prefix}file_browser_{encoder_type}"
+            )
+            
+            if selected_option.startswith("デフォルト:"):
+                checkpoint_path = default_path
+            elif selected_option == "カスタムパス指定...":
+                checkpoint_path = st.sidebar.text_input(
+                    "カスタムパス",
+                    value=default_path,
+                    key=f"{key_prefix}custom_fallback_{encoder_type}"
+                )
+            elif selected_option.startswith("ローカル:"):
+                # "ローカル: filename (full_path)" から full_path を抽出
+                checkpoint_path = selected_option.split("(")[-1].rstrip(")")
+            else:
+                checkpoint_path = default_path
+        else:
+            st.sidebar.warning(f"⚠️ {encoder_type.upper()} のローカルファイルが見つかりません")
+            checkpoint_path = st.sidebar.text_input(
+                f"{encoder_type.upper()} パス（手動入力）",
+                value=default_path,
+                key=f"{key_prefix}manual_input_{encoder_type}"
+            )
+    
+    # ファイル/ID の検証と情報表示
+    if checkpoint_path:
+        if checkpoint_path.startswith(("openai/", "facebook/", "microsoft/", "google/")):
+            # Hugging Face ID の場合
+            st.sidebar.success(f"🤗 Hugging Face モデル ID: `{checkpoint_path}`")
+        elif os.path.exists(checkpoint_path):
+            # ローカルファイルの場合
+            file_size = os.path.getsize(checkpoint_path) / (1024 * 1024)  # MB
+            st.sidebar.success(f"✅ ローカルファイル確認済み ({file_size:.1f} MB)")
+            
+            # ファイル詳細情報
+            with st.sidebar.expander(f"📊 {encoder_type.upper()} ファイル詳細"):
+                file_stat = os.stat(checkpoint_path)
+                st.write(f"**パス**: `{checkpoint_path}`")
+                st.write(f"**ファイル名**: `{Path(checkpoint_path).name}`")
+                st.write(f"**サイズ**: {file_size:.2f} MB")
+                st.write(f"**更新日時**: {time.ctime(file_stat.st_mtime)}")
+        else:
+            # 存在しないパスの場合
+            if "/" in checkpoint_path and not checkpoint_path.startswith(("openai/", "facebook/")):
+                st.sidebar.error(f"❌ ファイルが見つかりません: `{checkpoint_path}`")
+            else:
+                st.sidebar.warning(f"⚠️ Hugging Face IDまたはパスを確認: `{checkpoint_path}`")
+    
+    return checkpoint_path
+
 def main():
     # タイトル
     st.title("🎨 拡張版ハイブリッドPCA可視化システム")
     st.markdown("### 主成分選択機能付きインタラクティブ可視化ツール")
     
     # 利用可能な機能の表示
-    with st.expander("🔧 利用可能な機能", expanded=False):
+    with st.expander("🔧 利用可能な機能とチェックポイント情報", expanded=False):
         col1, col2, col3 = st.columns(3)
         with col1:
             st.write("**✅ 基本エンコーダー**")
+            
+            # CLIP情報
+            clip_checkpoint = getattr(st.session_state, 'clip_checkpoint', 'openai/clip-vit-large-patch14')
             st.write("• CLIP")
+            if clip_checkpoint.startswith('openai/'):
+                st.write(f"  └ 🤗 {Path(clip_checkpoint).name}")
+            else:
+                st.write(f"  └ 📁 {Path(clip_checkpoint).name}")
+            
+            # DINOv2情報
+            dinov2_checkpoint = getattr(st.session_state, 'dinov2-small_checkpoint', 'facebook/dinov2-small')
             st.write("• DINOv2")
+            if dinov2_checkpoint.startswith('facebook/'):
+                st.write(f"  └ 🤗 {Path(dinov2_checkpoint).name}")
+            else:
+                st.write(f"  └ 📁 {Path(dinov2_checkpoint).name}")
+        
         with col2:
             st.write("**🔄 オプション機能**")
+            
             if EMOTION_CLIP_AVAILABLE:
                 st.write("✅ EmotionCLIP")
+                emotion_checkpoint = getattr(st.session_state, 'emotion_clip_checkpoint', '')
+                if emotion_checkpoint:
+                    st.write(f"  └ 📁 {Path(emotion_checkpoint).name}")
             else:
                 st.write("❌ EmotionCLIP")
+            
             if OPENVISION_AVAILABLE:
                 st.write("✅ OpenVision")
+                openvision_checkpoint = getattr(st.session_state, 'openvision_checkpoint', '')
+                if openvision_checkpoint:
+                    if openvision_checkpoint.startswith(('microsoft/', 'google/')):
+                        st.write(f"  └ 🤗 {Path(openvision_checkpoint).name}")
+                    else:
+                        st.write(f"  └ 📁 {Path(openvision_checkpoint).name}")
             else:
                 st.write("❌ OpenVision")
+        
         with col3:
             st.write("**🎨 可視化機能**")
             st.write("✅ matplotlib可視化")
             st.write("✅ Plotly インタラクティブ")
             st.write("✅ 複数次元比較")
-    
+            st.write("✅ チェックポイント選択")
+
     # サイドバー - パラメータ設定
     st.sidebar.header("📋 パラメータ設定")
     
@@ -545,12 +787,23 @@ def main():
         available_encoders.insert(1, 'emotion_clip')
         encoder_descriptions['emotion_clip'] = 'EmotionCLIP (感情理解)'
     
+    if OPENVISION_AVAILABLE:
+        available_encoders.append('openvision')
+        encoder_descriptions['openvision'] = 'OpenVision (カスタム)'
+    
     encoder_type = st.sidebar.selectbox(
         "エンコーダー", 
         available_encoders, 
         format_func=lambda x: encoder_descriptions.get(x, x),
         index=1 if EMOTION_CLIP_AVAILABLE else 0
     )
+    
+    # 選択されたエンコーダーのチェックポイント設定
+    checkpoint_path = create_checkpoint_selector(encoder_type, "main_")
+    
+    # セッション状態に保存
+    st.session_state[f'{encoder_type}_checkpoint'] = checkpoint_path
+    
     batch_size = st.sidebar.slider("バッチサイズ", 1, 16, 8, 1)
     
     # PCA設定
@@ -848,26 +1101,55 @@ def main():
         
         #### 1. 基本設定
         - **📂 データ設定**: 画像フォルダのパスと最大画像数を設定
-        - **🤖 エンコーダー選択**: CLIP、EmotionCLIP、DINOv2から選択
+        - **🤖 エンコーダー選択**: CLIP、EmotionCLIP、DINOv2、OpenVisionから選択
+        - **📁 チェックポイント設定**: 各エンコーダーで3つの方法から選択
+          - **デフォルト使用**: 推奨パス/Hugging Face IDを自動使用
+          - **カスタムパス指定**: 任意のパスまたはHugging Face IDを手動入力
+          - **ファイルブラウザー**: システムが自動検索したファイルから選択
         - **📊 PCA設定**: 最大PCA成分数を設定（3-20）
         - **🎨 可視化パラメータ**: 画像サイズ、表示数、図のサイズを調整
         - **🚀 実行**: 「可視化実行」ボタンをクリック
         
-        #### 2. 主成分選択可視化 🎯
+        #### 2. チェックポイント選択の詳細 📁
+        
+        **CLIP & DINOv2**:
+        - デフォルト: Hugging Face公式モデル（自動ダウンロード）
+        - カスタム: 独自の学習済みモデルまたは他のHugging Face ID
+        - ブラウザー: ローカルキャッシュから選択
+        
+        **EmotionCLIP**:
+        - デフォルト: プロジェクト内の標準チェックポイント
+        - カスタム: 任意の.ptファイルパス
+        - ブラウザー: 複数ディレクトリから.ptファイルを自動検索
+        
+        **OpenVision**:
+        - デフォルト: プロジェクト内の標準チェックポイント
+        - カスタム: 任意のモデルファイルパス
+        - ブラウザー: modelsディレクトリから自動検索
+        
+        #### 3. 主成分選択可視化 🎯
         - **X軸・Y軸**: 任意の主成分を選択（PC1, PC2, PC3...）
         - **3D表示**: チェックでZ軸も選択可能
         - **リアルタイム更新**: パラメータ変更後「可視化更新」で即座に反映
         
-        #### 3. 分析機能
+        #### 4. 分析機能
         - **📈 寄与率分析**: 各主成分の重要度を確認
         - **🔍 散布図行列**: 複数主成分の関係を一度に表示
         - **📋 統計情報**: 詳細な数値データを確認
         
         ### ✨ 新機能
         - **🎯 任意主成分選択**: PC1 vs PC3、PC2 vs PC4など自由な組み合わせ
+        - **📁 全エンコーダーチェックポイント選択**: 全てのエンコーダーでカスタマイズ可能
+        - **🔍 自動ファイル検索**: ローカルファイルの自動検出とリスト表示
         - **📊 詳細分析**: 寄与率テーブル、散布図行列
         - **🔄 リアルタイム更新**: パラメータ変更で即座に再生成
         - **💾 高度な保存**: 主成分情報付きファイル名で自動保存
+        
+        ### 🛡️ 安全機能
+        - **ファイル存在確認**: チェックポイントファイルの自動検証
+        - **詳細情報表示**: ファイルサイズ、更新日時などの詳細情報
+        - **エラーハンドリング**: わかりやすいエラーメッセージと解決策提示
+        - **候補ファイル提案**: エラー時に利用可能な代替ファイルを自動提案
         """)
     
     # フッター
@@ -875,4 +1157,4 @@ def main():
     st.markdown("🎨 **拡張版ハイブリッドPCA可視化システム** - 主成分選択機能付き")
 
 if __name__ == "__main__":
-    main() 
+    main()

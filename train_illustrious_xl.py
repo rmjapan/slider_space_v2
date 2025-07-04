@@ -599,7 +599,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--clip_total_samples",
         type=int,
-        default=200,
+        default=5000,
         help="Total number of samples for CLIP feature extraction"
     )
     parser.add_argument(
@@ -611,7 +611,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--encoder",
         type=str,
-        default='emotion_clip',
+        default='clip',
         choices=['clip', 'openvision','emotion_clip','emo_next'],
         help="Encoder to use for feature extraction"
     )
@@ -724,6 +724,7 @@ if __name__ == "__main__":
     # 1. Expand prompts using Claude if required (this is just added bonus for diverse slider discovery) - you need to export your own API key
     args.extend_prompts = 'true'
     if args.extend_prompts == 'true':
+        print("生成中")
         diverse_prompts = expand_prompts(args.concept_prompts, args.diverse_prompt_num, args)
     else:
         diverse_prompts = args.concept_prompts

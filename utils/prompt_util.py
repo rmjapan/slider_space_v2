@@ -2,7 +2,7 @@ import anthropic
 
 
 
-client = anthropic.Anthropic()
+# client = anthropic.Anthropic()
 from typing import List, Optional
 
 def claude_generate_prompts_sliders(prompt, 
@@ -48,41 +48,41 @@ example output format:
 
 
 
-def expand_prompts(concept_prompts: List[str], diverse_prompt_num: int, args) -> List[str]:
-    """
-    Expand the input prompts using Claude if requested.
+# def expand_prompts(concept_prompts: List[str], diverse_prompt_num: int, args) -> List[str]:
+#     """
+#     Expand the input prompts using Claude if requested.
     
-    Args:
-        concept_prompts: Initial list of prompts
-        diverse_prompt_num: Number of variations to generate per prompt
-        args: Training arguments
+#     Args:
+#         concept_prompts: Initial list of prompts
+#         diverse_prompt_num: Number of variations to generate per prompt
+#         args: Training arguments
         
-    Returns:
-        List of expanded prompts
-    """
-    diverse_prompts = []
+#     Returns:
+#         List of expanded prompts
+#     """
+#     diverse_prompts = []
     
-    if diverse_prompt_num != 0:
-        for prompt in concept_prompts:
-            try:
-                claude_generated_prompts = claude_generate_prompts_sliders(
-                    prompt=prompt,
-                    num_prompts=diverse_prompt_num,
-                    temperature=0.2,
-                    max_tokens=8000,
-                    frequency_penalty=0.0, 
-                    model="claude-3-5-sonnet-20240620",
-                    verbose=False
-                )
-                diverse_prompts.extend(eval(claude_generated_prompts))
-            except Exception as e:
-                print(f"Error with Claude response: {e}")
-                diverse_prompts.append(prompt)
-    else:
-        diverse_prompts = concept_prompts
+#     if diverse_prompt_num != 0:
+#         for prompt in concept_prompts:
+#             try:
+#                 claude_generated_prompts = claude_generate_prompts_sliders(
+#                     prompt=prompt,
+#                     num_prompts=diverse_prompt_num,
+#                     temperature=0.2,
+#                     max_tokens=8000,
+#                     frequency_penalty=0.0, 
+#                     model="claude-3-5-sonnet-20240620",
+#                     verbose=False
+#                 )
+#                 diverse_prompts.extend(eval(claude_generated_prompts))
+#             except Exception as e:
+#                 print(f"Error with Claude response: {e}")
+#                 diverse_prompts.append(prompt)
+#     else:
+#         diverse_prompts = concept_prompts
         
-    print(f"Using prompts: {diverse_prompts}")
-    return diverse_prompts
+#     print(f"Using prompts: {diverse_prompts}")
+#     return diverse_prompts
 
 from openai import OpenAI
 import os
@@ -102,7 +102,7 @@ def gpt_generate_prompts_sliders(
         top_p=1,
         store=True
                                      ):
-
+    print("gpt")
     response = client.responses.create(
     model=model,
     input=[
@@ -110,11 +110,7 @@ def gpt_generate_prompts_sliders(
         "role": "system",
         "content": [
             {
-            "type": "input_text",
-            # "text": " You are an expert in writing diverse image captions. When i provide a prompt, I want you to give me {num_prompts} alternative prompts that is similar to the provided prompt but produces diverse images. Be creative and make sure the original subjects in the original prompt are present in your prompts. Make sure that you end the prompts with keywords that will produce high quality images like \",detailed, 8k\" or \",hyper-realistic, 4k\".\n\nGive me the expanded prompts in the style of a list. start with a [ and end with ] do not add any special characters like \\n \nI need you to give me only the python list and nothing else. Do not explain yourself\n\nexample output format:\n[\"prompt1\", \"prompt2\", ...]\n"
-            # }
-            # "text": f"You are an expert at crafting anime-style portrait prompts. The concept prompt: I give you (e.g., “a kind-looking man in his 20s”, “a studious-looking high-school girl”) is an abstract impression only. To translate that impression into vivid, diverse visual prompts, generate {num_prompts} English prompts that obey all rules below:\n\n1. Keep the face front-and-center in every prompt.\n2. Vary the expression keyword to match the impression (e.g., shy glance, confident gaze, hopeful eyes).\n3. Vary the expression intensity (e.g., slightly smiling, deeply caring) to add gradation.\n4. Limit background and props to the bare minimum; only subtle gestures that support the impression are allowed.\n5. Explicitly state the anime style (include “anime style”, “anime portrait”, etc.).\n6. Append a fixed quality footer such as “, anime style, ultra-detailed, 4k”.\n7. Enrich each prompt with similes, metaphors, or hyperbole to concretize the abstract concept (e.g., a smile like a spring breeze, eyes brighter than dawn).\n8. Do not repeat identical phrases across prompts; each must convey a unique emotional nuance.\n9. Return only a valid Python list in this exact format—no explanations, no extra characters, no newlines: [\"prompt 1\", \"prompt 2\", ...]",
-            # }
+            "type": "input_text",      
             "text":f"""You are an expert at generating anime-style character expression prompts. Your goal is to expand a provided base prompt into a diverse list of character expressions. Follow these exact guidelines:
                     1. Begin each prompt exactly with this base structure:
                     {user_prompt}
@@ -136,11 +132,7 @@ def gpt_generate_prompts_sliders(
                     9. Limit each prompt strictly to 75 tokens or fewer.
                     """
             }
-            # # "text": f"""You are an expert at crafting anime-style portrait prompts. I will give you an abstract impression concept (e.g., “a kind-looking man in his 20s”, “a studious-looking high-school girl”), and your task is to translate that into vivid, diverse visual prompts that obey all the following rules:\n\n1. Center the face prominently in every prompt.\n2. Interpret the given impression across a wide emotional spectrum—not only joy, anger, sorrow, or pleasure, but also subtler or mixed states like serenity, unease, awe, melancholy, or whimsy.\n3. Vary the expression with emotionally evocative keywords (e.g., a wistful glance, a piercing gaze, a dreamy half-smile).\n4. Adjust intensity levels (e.g., barely perceptible smile, burning determination) to provide fine-grained emotional variation.\n5. Keep background and props minimal; only light gestures or contextual hints are allowed to support the impression.\n6. Always include explicit anime-style descriptors such as “anime style”, “anime portrait”, etc.\n7. Append a quality-enhancing footer: “, anime portrait, ultra-detailed, high resolution, 4k”.\n8. Integrate vivid figurative language (similes, metaphors, hyperbole) to make each prompt uniquely expressive (e.g., 'eyes like stormy skies', 'a smile as faint as fading starlight').\n9. Avoid phrase repetition. Every prompt must express a distinct emotional nuance.\n10. Return a valid Python list in the exact format: \["prompt 1", "prompt 2", ...] with no extra characters, no newlines, no explanations."""
-            # }
-
-
-            
+        
         ]
         },
         {
@@ -161,10 +153,11 @@ def gpt_generate_prompts_sliders(
     reasoning={},
     tools=[],
     temperature=1,
-    max_output_tokens=2048,
+    max_output_tokens=max_output_tokens,
     top_p=1,
     store=True
     )
+    print("GPT")
     return response.output_text
 
 def clean_gpt_list_string(gpt_str):
@@ -214,7 +207,7 @@ def expand_prompts(concept_prompts: List[str], diverse_prompt_num: int, args) ->
                     temperature=0.2,
                     max_output_tokens=5000,
                     top_p=1,
-                    store=True
+                    store=False
                 )
                 print(f"gpt_generated_prompts: {gpt_generated_prompts}")
                 #"",でない最後の文字を削除
@@ -224,6 +217,7 @@ def expand_prompts(concept_prompts: List[str], diverse_prompt_num: int, args) ->
             except Exception as e:
                 print(f"Error with GPT response: {e}")
                 diverse_prompts.append(prompt)
+            print("GUU")
         
             # try:
                 # claude_generated_prompts = claude_generate_prompts_sliders(
