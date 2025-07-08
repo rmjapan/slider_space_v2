@@ -1,0 +1,17 @@
+<!DOCTYPE html><html lang="ja"><head>    <meta charset="UTF-8">    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>画像キャプション作成ツール</title>    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"></head><body>    <div class="container">        <h1>画像キャプション作成ツール</h1>                <div class="form-section">            <h2>画像フォルダを選択</h2>            <form method="POST" action="{{ url_for('select_folder') }}">                <div class="form-group">                    <label for="folder_path">フォルダパス:</label>                    <input type="text" id="folder_path" name="folder_path"                            placeholder="/path/to/your/images/folder" required>                    <small>例: /home/ryuichi/images</small>                </div>                <button type="submit">フォルダを選択</button>            </form>        </div>                {% with messages = get_flashed_messages() %}            {% if messages %}                <div class="messages">                    {% for message in messages %}                        <div class="alert">{{ message }}</div>                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        <div class="instructions">
+            <h3>使い方:</h3>
+            <ol>
+                <li>画像が含まれるフォルダのパスを入力してください</li>
+                <li>「フォルダを選択」ボタンをクリック</li>
+                <li>画像を見ながらキャプションを作成</li>
+                <li>すべて完了したら「保存」</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>

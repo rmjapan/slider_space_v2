@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>キャプション作成 - {{ filename }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>画像キャプション作成</h1>
+            <div class="progress">
+                {{ current_index }} / {{ total_images }}
+                <span class="caption-status {{ 'existing' if caption_status == '既存' else 'new' }}">
+                    ({{ caption_status }})
+                </span>
+            </div>
+        </div>
+        
+        <div class="info-section">
+            <p><strong>出力先:</strong> {{ output_folder }}/metadata.jsonl</p>
+            <button type="button" id="reload-captions" class="btn-reload">キャプション再読み込み</button>
+        </div>
+        
+        <div class="image-section">
+            <div class="image-container">
+                <img src="data:image/jpeg;base64,{{ image_data }}" alt="{{ filename }}" class="main-image">
+            </div>
+            <div class="image-info">
+                <strong>ファイル名:</strong> {{ filename }}
+            </div>
+        </div>
+        
+        <!-- 表情選択セクション -->
+        <div class="expression-section">
+            <h3>表情から自動生成</h3>
+            <div class="expression-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="expression">表情:</label>
+                        <select id="expression" name="expression">
+                            <option value="">表情を選択</option>
+                            {% for jp_expr, en_expr in expressions.items() %}
+                            <option value="{{ jp_expr }}">{{ jp_expr }} ({{ en_expr }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="intensity">強度:</label>
+                        <select id="intensity" name="intensity">
+                            <option value="">強度を選択</option>
+                            {% for name, value in intensities.items() %}
+                            <option value="{{ name }}">{{ name }} ({{ value }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <button type="button" id="generate-caption" class="btn-generate">生成</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="caption-section">
+            <form id="caption-form">
+                <div class="form-group">
+                    <label for="caption">キャプション:</label>
+                    <textarea id="caption" name="caption" rows="4" placeholder="画像の説明を入力してください...">{{ current_caption }}</textarea>
+                </div>
+                <input type="hidden" name="filename" value="{{ filename }}">
+                <button type="button" id="save-caption">キャプションを保存</button>
+            </form>
+        </div>
+        
+        <div class="navigation">
+            <a href="{{ url_for('prev_image') }}" class="nav-btn {{ 'disabled' if current_index == 1 }}">← 前の画像</a>
+            <a href="{{ url_for('next_image') }}" class="nav-btn {{ 'disabled' if current_index == total_images }}">次の画像 →</a>
+        </div>
+        
+        <div class="actions">
+            <button type="button" id="save-all">すべて保存</button>
+            <a href="{{ url_for('index') }}" class="btn-secondary">フォルダ選択に戻る</a>
+        </div>
+        
+        <div id="message" class="message"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
